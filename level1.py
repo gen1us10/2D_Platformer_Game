@@ -43,6 +43,11 @@ class Player:
     on_ground: bool = False
     has_key: bool = False
     facing_right: bool = True
+    coyote_timer: float = 0.0
+    jump_buffer:  float = 0.0
+
+    COYOTE_TIME      = 0.10
+    JUMP_BUFFER_TIME = 0.10
 
     def handle_input(self, keys):
         self.vx = 0.0
@@ -53,10 +58,17 @@ class Player:
             self.vx = MOVE_SPEED
             self.facing_right = True
 
-    def try_jump(self):
-        if self.on_ground:
+    def request_jump(self):
+        self.jump_buffer = self.JUMP_BUFFER_TIME
+
+    def update_jump(self, dt):
+        self.jump_buffer  = max(0.0, self.jump_buffer  - dt)
+        self.coyote_timer = max(0.0, self.coyote_timer - dt)
+        if self.jump_buffer > 0 and (self.on_ground or self.coyote_timer > 0):
             self.vy = -JUMP_SPEED
-            self.on_ground = False
+            self.on_ground    = False
+            self.coyote_timer = 0.0
+            self.jump_buffer  = 0.0
 
 
 @dataclass
@@ -210,7 +222,7 @@ def main():
     kp  = platforms[KEY_PLATFORM_IDX]
     key = Key(rect=pygame.Rect(
         kp.rect.centerx - key_img.get_width() // 2,
-        kp.rect.top - key_img.get_height() - 20,
+        kp.rect.top - key_img.get_height() - 6,
         key_img.get_width(), key_img.get_height()
     ))
 
@@ -248,7 +260,7 @@ def main():
                 if event.key == pygame.K_r:
                     reset()
                 if event.key in (pygame.K_SPACE, pygame.K_UP, pygame.K_w):
-                    player.try_jump()
+                    player.request_jump()
 
         player.handle_input(pygame.key.get_pressed())
 
@@ -257,12 +269,18 @@ def main():
         player.rect.x += int(player.vx * dt)
         resolve_collisions_axis(player, platforms, "x")
 
+        was_on_ground = player.on_ground
         player.on_ground = False
         player.rect.y += int(player.vy * dt)
         landed = resolve_collisions_axis(player, platforms, "y")
 
+        if was_on_ground and not player.on_ground:
+            player.coyote_timer = player.COYOTE_TIME
+
         if landed:
             apply_friction(player, dt, landed.friction)
+
+        player.update_jump(dt)
 
         # --- камера ---
         # целевой cam_x: держим игрока у CAM_THRESHOLD от левого края экрана
