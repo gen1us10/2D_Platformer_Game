@@ -12,6 +12,8 @@ ASSET_KEY         = "assets/key.png"
 ASSET_DOOR_CLOSED = "assets/door_closed.png"
 ASSET_DOOR_OPEN   = "assets/door_open.png"
 ASSET_CRATE       = "assets/crate.png"
+ASSET_SPIKE       = "assets/spike.png"
+ASSET_SAW         = "assets/saw.png"
 
 GRAVITY         = 1800.0
 MOVE_SPEED      = 480.0
@@ -23,6 +25,8 @@ DOOR_DISTANCE   = 70
 FLOOR_Y         = HEIGHT - 80
 CAM_THRESHOLD   = WIDTH // 2
 
+SAW_RADIUS = 22
+
 
 @dataclass
 class Platform:
@@ -30,6 +34,14 @@ class Platform:
     friction: float
     restitution: float
     kind: str
+
+
+@dataclass
+class Hazard:
+    x: float
+    y: float
+    kind: str
+    angle: float = 0.0
 
 
 @dataclass
@@ -168,6 +180,16 @@ def build_main_scene():
     return platforms
 
 
+def build_main_hazards():
+    return [
+        Hazard(700  + 90,  FLOOR_Y - 208 - 22 - 25, "spike"),
+        Hazard(950  + 90,  FLOOR_Y - 318 - 22 - 25, "spike"),
+        Hazard(1500 + 90,  FLOOR_Y - 138 - 22 - 25, "spike"),
+        Hazard(2000 + 90,  FLOOR_Y - 180 - 44,      "saw"),
+        Hazard(2250 + 110, FLOOR_Y - 120 - 44,      "saw"),
+    ]
+
+
 def build_key_zone():
     platforms = [
         Platform(pygame.Rect(0,    FLOOR_Y, 2700, 80), FRICTION_NORMAL, 0.0, "normal"),
@@ -198,6 +220,17 @@ def build_key_zone():
     ]
     return platforms
 
+
+def build_key_hazards():
+    return [
+        Hazard(450  + 90,  FLOOR_Y - 88 - 22 - 25, "spike"),
+        Hazard(1000 + 100, FLOOR_Y - 288 - 22 - 25, "spike"),
+        Hazard(1600 + 90,  FLOOR_Y - 200 - 44,      "saw"),
+        Hazard(1850 + 90,  FLOOR_Y - 130 - 44,      "saw"),
+        Hazard(2100 + 90,  FLOOR_Y - 218 - 22 - 25, "spike"),
+    ]
+
+
 DOOR_B_PLATFORM_IDX = 11
 KEY_PLATFORM_IDX    = 16
 
@@ -217,6 +250,8 @@ def main():
     tile_floor = pygame.transform.smoothscale(strip, (256, 80))
     tile_thin  = pygame.transform.smoothscale(strip, (256, 22))
     crate_img  = pygame.transform.smoothscale(load_image(ASSET_CRATE), (60, 60))
+    spike_img  = pygame.transform.smoothscale(load_image(ASSET_SPIKE), (50, 50))
+    saw_base   = pygame.transform.smoothscale(load_image(ASSET_SAW),   (48, 48))
 
     FRAME_W, FRAME_H = 64, 64
     SCALE = 1.8
@@ -241,7 +276,9 @@ def main():
     door_img_open   = pygame.transform.smoothscale(load_image(ASSET_DOOR_OPEN),   (DOOR_W, DOOR_H))
 
     main_platforms = build_main_scene()
+    main_hazards   = build_main_hazards()
     key_platforms  = build_key_zone()
+    key_hazards    = build_key_hazards()
 
     kp  = key_platforms[KEY_PLATFORM_IDX]
     key = Key(rect=pygame.Rect(
@@ -260,17 +297,38 @@ def main():
         DOOR_W, DOOR_H
     ))
 
-    player     = Player(rect=pygame.Rect(250, FLOOR_Y - HB_H, HB_W, HB_H))
-    scene      = "main"
-    cam_x      = 0.0
-    won        = False
-    win_timer  = 0.0
-    anim_timer = 0.0
-    anim_frame = 0
-    key_draw   = key.rect.copy()
+    player = Player(rect=pygame.Rect(250, FLOOR_Y - HB_H, HB_W, HB_H))
+
+    state = {
+        "scene":       "main",
+        "cam_x":       0.0,
+        "won":         False,
+        "win_timer":   0.0,
+        "anim_timer":  0.0,
+        "anim_frame":  0,
+        "fade_alpha":  0.0,
+        "fade_state":  None,
+        "fade_target": None,
+        "scene_next":  None,
+    }
+    key_draw = key.rect.copy()
+
+    def do_respawn():
+        player.rect.topleft = (250, FLOOR_Y - HB_H)
+        player.vx = player.vy = 0.0
+        state["cam_x"] = 0.0
+        if state["scene"] == "key_zone" and player.has_key:
+            player.has_key = False
+            key.collected = False
+            key.bob_timer = 0.0
+
+    def do_scene_switch():
+        state["scene"] = state["scene_next"]
+        player.rect.topleft = (250, FLOOR_Y - HB_H)
+        player.vx = player.vy = 0.0
+        state["cam_x"] = 0.0
 
     def reset():
-        nonlocal scene, cam_x, won, win_timer, anim_timer, anim_frame
         player.rect.topleft = (250, FLOOR_Y - HB_H)
         player.vx = player.vy = 0.0
         player.on_ground = False
@@ -278,23 +336,23 @@ def main():
         key.collected = False
         key.bob_timer = 0.0
         door_b.is_open = False
-        won = False
-        win_timer = 0.0
-        scene = "main"
-        cam_x = 0.0
-        anim_timer = 0.0
-        anim_frame = 0
-
-    def switch_scene(to):
-        nonlocal scene, cam_x
-        scene = to
-        cam_x = 0.0
-        player.rect.topleft = (250, FLOOR_Y - HB_H)
-        player.vx = player.vy = 0.0
+        state["scene"]       = "main"
+        state["cam_x"]       = 0.0
+        state["won"]         = False
+        state["win_timer"]   = 0.0
+        state["anim_timer"]  = 0.0
+        state["anim_frame"]  = 0
+        state["fade_alpha"]  = 0.0
+        state["fade_state"]  = None
+        state["fade_target"] = None
+        state["scene_next"]  = None
 
     while True:
         dt = min(clock.tick(FPS) / 1000.0, 0.05)
+
+        scene     = state["scene"]
         platforms = main_platforms if scene == "main" else key_platforms
+        hazards   = main_hazards   if scene == "main" else key_hazards
         world_w   = 2800 if scene == "main" else 2700
 
         for event in pygame.event.get():
@@ -307,12 +365,32 @@ def main():
                 if event.key in (pygame.K_SPACE, pygame.K_UP, pygame.K_w):
                     player.request_jump()
                 if event.key == pygame.K_e:
-                    if center_distance(player.rect, door_a.rect) < DOOR_DISTANCE:
-                        switch_scene("key_zone" if scene == "main" else "main")
+                    if state["fade_state"] is None:
+                        if center_distance(player.rect, door_a.rect) < DOOR_DISTANCE:
+                            state["fade_state"]  = "out"
+                            state["fade_target"] = "scene"
+                            state["scene_next"]  = "key_zone" if scene == "main" else "main"
 
-        player.handle_input(pygame.key.get_pressed())
+        fs = state["fade_state"]
+        if fs == "out":
+            state["fade_alpha"] = min(1.0, state["fade_alpha"] + dt * 4.0)
+            if state["fade_alpha"] >= 1.0:
+                if state["fade_target"] == "death":
+                    do_respawn()
+                else:
+                    do_scene_switch()
+                state["fade_state"] = "in"
+        elif fs == "in":
+            state["fade_alpha"] = max(0.0, state["fade_alpha"] - dt * 3.0)
+            if state["fade_alpha"] <= 0.0:
+                state["fade_state"]  = None
+                state["fade_target"] = None
+                state["scene_next"]  = None
+
+        if state["fade_state"] != "out":
+            player.handle_input(pygame.key.get_pressed())
+
         player.vy += GRAVITY * dt
-
         player.rect.x += int(player.vx * dt)
         resolve_collisions_axis(player, platforms, "x")
 
@@ -323,20 +401,42 @@ def main():
 
         if was_on_ground and not player.on_ground:
             player.coyote_timer = player.COYOTE_TIME
-
         if landed:
             apply_friction(player, dt, landed.friction)
 
         player.update_jump(dt)
 
+        for h in hazards:
+            if h.kind == "saw":
+                h.angle = (h.angle + 120.0 * dt) % 360.0
+
+        if state["fade_state"] is None:
+            for h in hazards:
+                hit = False
+                if h.kind == "spike":
+                    hrect = pygame.Rect(h.x - 20, h.y - 20, 40, 40)
+                    hit = player.rect.colliderect(hrect)
+                elif h.kind == "saw":
+                    dx = player.rect.centerx - h.x
+                    dy = player.rect.centery - h.y
+                    hit = math.sqrt(dx*dx + dy*dy) < SAW_RADIUS + 18
+                if hit:
+                    state["fade_state"]  = "out"
+                    state["fade_target"] = "death"
+                    break
+
+        cam_x = state["cam_x"]
         target_cam = player.rect.centerx - CAM_THRESHOLD
         target_cam = max(0, min(target_cam, world_w - WIDTH))
         cam_x += (target_cam - cam_x) * min(1.0, 8.0 * dt)
+        state["cam_x"] = cam_x
         cx = int(cam_x)
+
+        scene = state["scene"]
 
         if scene == "key_zone" and not key.collected:
             key.bob_timer += dt
-            bob_y  = int(math.sin(key.bob_timer * 3.0) * 5)
+            bob_y    = int(math.sin(key.bob_timer * 3.0) * 5)
             key_draw = pygame.Rect(key.rect.x, key.rect.y + bob_y, key.rect.width, key.rect.height)
             if center_distance(player.rect, key_draw) < PICKUP_DISTANCE:
                 key.collected = True
@@ -346,11 +446,10 @@ def main():
             if center_distance(player.rect, door_b.rect) < DOOR_DISTANCE:
                 door_b.is_open = True
 
-        if door_b.is_open and not won:
-            won = True
-
-        if won:
-            win_timer += dt
+        if door_b.is_open and not state["won"]:
+            state["won"] = True
+        if state["won"]:
+            state["win_timer"] += dt
 
         bg_offset = int(cx * 0.4) % WIDTH
         screen.blit(bg_scaled, (-bg_offset, 0))
@@ -367,6 +466,14 @@ def main():
                 pygame.draw.rect(screen, (80, 40, 10),
                                  pygame.Rect(p.rect.x - cx, p.rect.y, p.rect.width, p.rect.height), 2)
 
+        for h in hazards:
+            sx = int(h.x - cx)
+            if h.kind == "spike":
+                screen.blit(spike_img, (sx - 25, int(h.y) - 25))
+            elif h.kind == "saw":
+                rotated = pygame.transform.rotate(saw_base, h.angle)
+                screen.blit(rotated, (sx - rotated.get_width() // 2, int(h.y) - rotated.get_height() // 2))
+
         screen.blit(door_img_open, (door_a.rect.x - cx, door_a.rect.y))
 
         if scene == "key_zone" and not key.collected:
@@ -381,18 +488,18 @@ def main():
                         (door_b.rect.x - cx, door_b.rect.y))
 
         if player.vx != 0:
-            anim_timer += dt
-            if anim_timer >= 1.0 / 8:
-                anim_timer -= 1.0 / 8
-                anim_frame = (anim_frame + 1) % 4
+            state["anim_timer"] += dt
+            if state["anim_timer"] >= 1.0 / 8:
+                state["anim_timer"] -= 1.0 / 8
+                state["anim_frame"] = (state["anim_frame"] + 1) % 4
         else:
-            anim_timer = 0.0
-            anim_frame = 0
+            state["anim_timer"] = 0.0
+            state["anim_frame"] = 0
 
         if player.vx > 0:
-            sprite = walk_right[anim_frame]
+            sprite = walk_right[state["anim_frame"]]
         elif player.vx < 0:
-            sprite = walk_left[anim_frame]
+            sprite = walk_left[state["anim_frame"]]
         else:
             sprite = img_idle
 
@@ -415,8 +522,14 @@ def main():
         screen.blit(hint_bg, (10, HEIGHT - 38))
         screen.blit(font.render("<- -> pohyb  |  SPACE skok  |  R restart", True, (220, 220, 220)), (16, HEIGHT - 34))
 
-        if won:
-            alpha = min(1.0, win_timer / 0.5)
+        if state["fade_state"] is not None:
+            overlay = pygame.Surface((WIDTH, HEIGHT))
+            overlay.fill((0, 0, 0))
+            overlay.set_alpha(int(255 * state["fade_alpha"]))
+            screen.blit(overlay, (0, 0))
+
+        if state["won"]:
+            alpha = min(1.0, state["win_timer"] / 0.5)
             overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, int(120 * alpha)))
             screen.blit(overlay, (0, 0))
