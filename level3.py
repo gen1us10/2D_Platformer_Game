@@ -256,33 +256,23 @@ def build_key_platforms():
         Platform(pygame.Rect(-20,        0, 20, HEIGHT),       FRICTION_NORMAL, 0.0, "wall"),
         Platform(pygame.Rect(KEY_WORLD_W,0, 20, HEIGHT),       FRICTION_NORMAL, 0.0, "wall"),
 
-        Platform(pygame.Rect(490,  F - 160, 160, 22), FRICTION_NORMAL, 0.0, "normal"),
-
-        Platform(pygame.Rect(700,  F - 300, 260, 22), FRICTION_NORMAL, 0.0, "normal"),
-        Platform(pygame.Rect(900,  F - 360, 60,  60), FRICTION_NORMAL, 0.0, "crate"),
-
         Platform(pygame.Rect(1130, F - 420, 340, 22), FRICTION_NORMAL, 0.0, "normal"),
         Platform(pygame.Rect(1270, F - 480, 60,  60), FRICTION_NORMAL, 0.0, "crate"),
-
-        Platform(pygame.Rect(1630, F - 310, 180, 22), FRICTION_NORMAL, 0.0, "normal"),
 
         Platform(pygame.Rect(1970, F - 390, 200, 22), FRICTION_NORMAL, 0.0, "normal"),
         Platform(pygame.Rect(1970, F - 450, 60,  60), FRICTION_NORMAL, 0.0, "crate"),
 
-        Platform(pygame.Rect(2330, F - 270, 160, 22), FRICTION_NORMAL, 0.0, "normal"),
-
         Platform(pygame.Rect(2630, F - 380, 220, 22), FRICTION_NORMAL, 0.0, "normal"),
         Platform(pygame.Rect(2705, F - 440, 60,  60), FRICTION_NORMAL, 0.0, "crate"),
-
-        Platform(pygame.Rect(3010, F - 260, 160, 22), FRICTION_NORMAL, 0.0, "normal"),
 
         Platform(pygame.Rect(3250, F - 410, 200, 22), FRICTION_NORMAL, 0.0, "normal"),
         Platform(pygame.Rect(3390, F - 470, 60,  60), FRICTION_NORMAL, 0.0, "crate"),
         Platform(pygame.Rect(3390, F - 530, 60,  60), FRICTION_NORMAL, 0.0, "crate"),
+        Platform(pygame.Rect(3390, F - 590, 60,  60), FRICTION_NORMAL, 0.0, "crate"),
     ]
 
 
-KEY_PLATFORM_IDX = 17
+KEY_PLATFORM_IDX = 12
 
 
 def build_key_hazards():
@@ -311,10 +301,10 @@ def build_key_springs():
 
     return [
         sp(350,  F),
-        sp(705,  plat[4].rect.top),
-        sp(1635, plat[8].rect.top),
-        sp(2335, plat[11].rect.top),
-        sp(3015, plat[14].rect.top),
+        sp(715,  F - 300),
+        sp(1635, F - 310),
+        sp(2335, F - 270),
+        sp(3015, F - 260),
     ]
 
 
@@ -464,7 +454,7 @@ def main():
 
         fs = state["fade_state"]
         if fs == "out":
-            state["fade_alpha"] = min(1.0, state["fade_alpha"] + dt * 4.0)
+            state["fade_alpha"] = min(1.0, state["fade_alpha"] + dt * 10.0)
             if state["fade_alpha"] >= 1.0:
                 if state["fade_target"] == "death":
                     do_respawn()
