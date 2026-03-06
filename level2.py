@@ -373,7 +373,7 @@ def main():
 
         fs = state["fade_state"]
         if fs == "out":
-            state["fade_alpha"] = min(1.0, state["fade_alpha"] + dt * 4.0)
+            state["fade_alpha"] = min(1.0, state["fade_alpha"] + dt * 10.0)
             if state["fade_alpha"] >= 1.0:
                 if state["fade_target"] == "death":
                     do_respawn()
