@@ -199,11 +199,54 @@ def build_main_platforms():
         Platform(pygame.Rect(0,           F, MAIN_WORLD_W, 80), FRICTION_NORMAL, 0.0, "normal"),
         Platform(pygame.Rect(-20,         0, 20, HEIGHT),        FRICTION_NORMAL, 0.0, "wall"),
         Platform(pygame.Rect(MAIN_WORLD_W,0, 20, HEIGHT),        FRICTION_NORMAL, 0.0, "wall"),
+
+        Platform(pygame.Rect(420,  F - 145, 160, 22), FRICTION_NORMAL, 0.0, "normal"),
+
+        Platform(pygame.Rect(680,  F - 280, 200, 22), FRICTION_NORMAL, 0.0, "normal"),
+        Platform(pygame.Rect(680,  F - 340, 60,  60), FRICTION_NORMAL, 0.0, "crate"),
+
+        Platform(pygame.Rect(1260, F - 380, 220, 22), FRICTION_NORMAL, 0.0, "normal"),
+        Platform(pygame.Rect(1260, F - 440, 60,  60), FRICTION_NORMAL, 0.0, "crate"),
+        Platform(pygame.Rect(1420, F - 440, 60,  60), FRICTION_NORMAL, 0.0, "crate"),
+
+        Platform(pygame.Rect(1880, F - 360, 240, 22), FRICTION_NORMAL, 0.0, "normal"),
+        Platform(pygame.Rect(1970, F - 420, 60,  60), FRICTION_NORMAL, 0.0, "crate"),
+
+        Platform(pygame.Rect(2500, F - 340, 200, 22), FRICTION_NORMAL, 0.0, "normal"),
     ]
 
 
 def build_main_hazards():
-    return []
+    F = FLOOR_Y
+    floor_spikes = [Hazard(x, F - 25, "spike") for x in range(420, MAIN_WORLD_W, 50)]
+    platform_hazards = [
+        Hazard(680  + 100, F - 280 - 44, "saw"),
+        Hazard(680  + 170, F - 280 - 25, "spike"),
+
+        Hazard(1260 + 110, F - 380 - 44,      "saw"),
+        Hazard(1260 + 110, F - 380 - 44 - 48, "saw"),
+
+        Hazard(1880 + 25,  F - 360 - 25, "spike"),
+        Hazard(1880 + 215, F - 360 - 25, "spike"),
+
+    ]
+    return floor_spikes + platform_hazards
+
+
+def build_main_springs():
+    F = FLOOR_Y
+    R = SPRING_RESTITUTION
+    plat = build_main_platforms()
+
+    def sp(x, base):
+        return Spring(x=x, base_y=base, restitution=R)
+
+    return [
+        sp(465,  plat[3].rect.top),
+        sp(1025, F - 200),
+        sp(1605, F - 240),
+        sp(2245, F - 200),
+    ]
 
 
 def build_key_platforms():
@@ -319,6 +362,7 @@ def main():
 
     main_platforms = build_main_platforms()
     main_hazards   = build_main_hazards()
+    main_springs   = build_main_springs()
     key_platforms  = build_key_platforms()
     key_hazards    = build_key_hazards()
     key_springs    = build_key_springs()
@@ -333,7 +377,12 @@ def main():
     door_a = Door(rect=pygame.Rect(80, FLOOR_Y - DOOR_H, DOOR_W, DOOR_H))
     door_a.is_open = True
 
-    door_b = Door(rect=pygame.Rect(500, FLOOR_Y - DOOR_H, DOOR_W, DOOR_H))
+    door_b_plat = main_platforms[11]
+    door_b = Door(rect=pygame.Rect(
+        door_b_plat.rect.centerx - DOOR_W // 2,
+        door_b_plat.rect.top - DOOR_H,
+        DOOR_W, DOOR_H
+    ))
 
     player = Player(rect=pygame.Rect(250, FLOOR_Y - HB_H, HB_W, HB_H))
 
@@ -360,7 +409,7 @@ def main():
             player.has_key = False
             key.collected  = False
             key.bob_timer  = 0.0
-        for s in key_springs:
+        for s in key_springs + main_springs:
             s.animating  = False
             s.anim_timer = 0.0
 
@@ -378,7 +427,7 @@ def main():
         key.collected    = False
         key.bob_timer    = 0.0
         door_b.is_open   = False
-        for s in key_springs:
+        for s in key_springs + main_springs:
             s.animating  = False
             s.anim_timer = 0.0
         state.update({
@@ -394,7 +443,7 @@ def main():
         scene     = state["scene"]
         platforms = main_platforms if scene == "main" else key_platforms
         hazards   = main_hazards   if scene == "main" else key_hazards
-        springs   = []             if scene == "main" else key_springs
+        springs   = main_springs   if scene == "main" else key_springs
         world_w   = MAIN_WORLD_W   if scene == "main" else KEY_WORLD_W
 
         for event in pygame.event.get():
