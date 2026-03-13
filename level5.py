@@ -10,14 +10,27 @@ ASSET_BG            = "assets/bg.png"
 ASSET_PLATFORM      = "assets/platform.png"
 ASSET_CRATE         = "assets/main_crate.png"
 ASSET_CRATE_BROKEN  = "assets/crate.png"
+ASSET_APPLE         = "assets/Apple_Clear.png"
+ASSET_CHAIN         = "assets/Chain.png"
+ASSET_KEY           = "assets/key.png"
+ASSET_DOOR_CLOSED   = "assets/door_closed.png"
+ASSET_DOOR_OPEN     = "assets/door_open.png"
 
 GRAVITY         = 1800.0
+GRAVITY_APPLE   = 300.0
 MOVE_SPEED      = 480.0
 JUMP_SPEED      = 780.0
 FRICTION_NORMAL = 12.0
 
 CARRY_SPEED_MULT = 0.55
 CARRY_JUMP_MULT  = 0.65
+APPLE_SPEED_MULT = 0.10
+APPLE_JUMP_MULT  = 0.10
+
+THROW_SPEED      = 550.0
+THROW_PREVIEW_T  = 1.8
+THROW_DOTS       = 16
+PENDULUM_SPEED   = 1.4
 
 PICKUP_DIST = 70
 FLOOR_Y     = HEIGHT - 80
@@ -25,10 +38,19 @@ CAM_THRESHOLD = WIDTH // 2
 WORLD_W     = 3200
 BOX_SIZE    = 60
 FALL_VY     = 400.0
+CHAIN_HITS       = 2
 
 PLAT1_H = 60
 PLAT2_H = 200
 PLAT3_H = 380
+
+CHAIN_X   = 2320
+CHAIN_TOP = FLOOR_Y - PLAT3_H - 22
+CHAIN_LEN = 120
+KEY_HANG_Y = CHAIN_TOP + CHAIN_LEN
+
+DOOR_X = 80
+DOOR_Y = FLOOR_Y - 135
 
 
 @dataclass
@@ -48,15 +70,19 @@ class Player:
     coyote_timer: float = 0.0
     jump_buffer: float = 0.0
     carrying: bool = False
+    apples: int = 0
+    has_key: bool = False
 
     COYOTE_TIME      = 0.10
     JUMP_BUFFER_TIME = 0.10
 
     def eff_speed(self):
-        return MOVE_SPEED * CARRY_SPEED_MULT if self.carrying else MOVE_SPEED
+        mult = (1.0 - APPLE_SPEED_MULT * self.apples) * (CARRY_SPEED_MULT if self.carrying else 1.0)
+        return MOVE_SPEED * max(0.1, mult)
 
     def eff_jump(self):
-        return JUMP_SPEED * CARRY_JUMP_MULT if self.carrying else JUMP_SPEED
+        mult = (1.0 - APPLE_JUMP_MULT * self.apples) * (CARRY_JUMP_MULT if self.carrying else 1.0)
+        return JUMP_SPEED * max(0.1, mult)
 
     def handle_input(self, keys, dt):
         left  = keys[pygame.K_a] or keys[pygame.K_LEFT]
@@ -97,6 +123,41 @@ class CarryBox:
     shake_timer: float = 0.0
 
 
+@dataclass
+class Apple:
+    rect: pygame.Rect
+    collected: bool = False
+
+
+@dataclass
+class ThrownApple:
+    x: float
+    y: float
+    vx: float
+    vy: float
+    dead: bool = False
+
+
+@dataclass
+class Chain:
+    x: int
+    top_y: int
+    length: int
+    hits: int = 0
+    broken: bool = False
+    shake_t: float = 0.0
+
+
+@dataclass
+class Key:
+    rect: pygame.Rect
+    vx: float = 0.0
+    vy: float = 0.0
+    on_ground: bool = False
+    collected: bool = False
+    falling: bool = False
+
+
 def load_image(path):
     return pygame.image.load(path).convert_alpha()
 
@@ -126,27 +187,27 @@ def draw_tiled(surface, tile, area, cam_x=0, cam_y=0):
     surface.set_clip(prev_clip)
 
 
-def resolve_collisions_axis(player, platforms, axis):
+def resolve_collisions_axis(entity, platforms, axis):
     for p in platforms:
-        if not player.rect.colliderect(p.rect):
+        if not entity.rect.colliderect(p.rect):
             continue
         if axis == "x":
-            if player.vx > 0:
-                player.rect.right = p.rect.left
-            elif player.vx < 0:
-                player.rect.left = p.rect.right
-            player.vx = 0
+            if entity.vx > 0:
+                entity.rect.right = p.rect.left
+            elif entity.vx < 0:
+                entity.rect.left = p.rect.right
+            entity.vx = 0
         else:
-            if player.vy > 0:
-                player.rect.bottom = p.rect.top
-                player.on_ground = True
-            elif player.vy < 0:
-                player.rect.top = p.rect.bottom
-            player.vy = 0
+            if entity.vy > 0:
+                entity.rect.bottom = p.rect.top
+                entity.on_ground = True
+            elif entity.vy < 0:
+                entity.rect.top = p.rect.bottom
+            entity.vy = 0
 
 
-def get_ground_platform(player, platforms):
-    check = pygame.Rect(player.rect.x, player.rect.bottom, player.rect.width, 2)
+def get_ground_platform(entity, platforms):
+    check = pygame.Rect(entity.rect.x, entity.rect.bottom, entity.rect.width, 2)
     for p in platforms:
         if p.kind == "wall":
             continue
@@ -155,9 +216,9 @@ def get_ground_platform(player, platforms):
     return None
 
 
-def apply_friction(player, dt, friction):
-    if player.on_ground:
-        player.vx *= max(0.0, 1.0 - friction * dt)
+def apply_friction(entity, dt, friction):
+    if entity.on_ground:
+        entity.vx *= max(0.0, 1.0 - friction * dt)
 
 
 def center_distance(r1, r2):
@@ -192,6 +253,23 @@ def build_boxes():
             spawn_y = F - PLAT2_H - BOX_SIZE,
         ),
     ]
+
+
+def build_apples():
+    F = FLOOR_Y
+    return [
+        Apple(rect=pygame.Rect(620,  F - PLAT1_H - 40, 40, 40)),
+        Apple(rect=pygame.Rect(1500, F - PLAT2_H - 40, 40, 40)),
+        Apple(rect=pygame.Rect(2220, F - PLAT3_H - 40, 40, 40)),
+    ]
+
+
+def build_chain():
+    return Chain(x=CHAIN_X, top_y=CHAIN_TOP, length=CHAIN_LEN)
+
+
+def build_key():
+    return Key(rect=pygame.Rect(CHAIN_X - 24, KEY_HANG_Y, 48, 40))
 
 
 def update_box_physics(b, platforms, dt):
@@ -251,6 +329,42 @@ def update_box_physics(b, platforms, dt):
             b.vx = b.vy = 0.0
 
 
+def update_thrown_apple(a, platforms, dt):
+    if a.dead:
+        return
+    a.vy += GRAVITY_APPLE * dt
+    a.x  += a.vx * dt
+    a.y  += a.vy * dt
+    r = pygame.Rect(int(a.x) - 8, int(a.y) - 8, 16, 16)
+    for p in platforms:
+        if p.kind == "wall":
+            continue
+        if r.colliderect(p.rect):
+            a.dead = True
+            return
+    if a.y > FLOOR_Y + 100 or a.x < -200 or a.x > WORLD_W + 200:
+        a.dead = True
+
+
+def update_key_physics(key, platforms, dt):
+    if key.collected or not key.falling:
+        return
+    key.vy += GRAVITY * dt
+    key.rect.x += int(key.vx * dt)
+    key.on_ground = False
+    key.rect.y   += int(key.vy * dt)
+    for p in platforms:
+        if p.kind == "wall" or not key.rect.colliderect(p.rect):
+            continue
+        if key.vy > 0:
+            key.rect.bottom = p.rect.top
+            key.on_ground   = True
+            key.vy          = 0
+        elif key.vy < 0:
+            key.rect.top = p.rect.bottom
+            key.vy       = 0
+
+
 def attach_carried_box(b, player):
     gap = 3
     if player.facing_right:
@@ -286,6 +400,14 @@ def resolve_player_box_collision(player, b):
             player.vx        = 0.0
 
 
+def arc_points(ox, oy, vx, vy, g, n, total_t):
+    pts = []
+    for i in range(n):
+        t = i * total_t / (n - 1)
+        pts.append((ox + vx * t, oy + vy * t + 0.5 * g * t * t))
+    return pts
+
+
 def main():
     pygame.init()
     screen   = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -304,6 +426,12 @@ def main():
     crate_img    = pygame.transform.smoothscale(load_image(ASSET_CRATE),        (BOX_SIZE, BOX_SIZE))
     crate_broken = pygame.transform.smoothscale(load_image(ASSET_CRATE_BROKEN), (BOX_SIZE, BOX_SIZE))
 
+    apple_img = pygame.transform.smoothscale(load_image(ASSET_APPLE), (40, 40))
+    chain_img = pygame.transform.smoothscale(load_image(ASSET_CHAIN), (16, 16))
+    key_img   = pygame.transform.smoothscale(load_image(ASSET_KEY),   (48, 40))
+    door_closed_img = pygame.transform.smoothscale(load_image(ASSET_DOOR_CLOSED), (90, 135))
+    door_open_img   = pygame.transform.smoothscale(load_image(ASSET_DOOR_OPEN),   (90, 135))
+
     FRAME_W, FRAME_H = 64, 64
     SCALE = 1.8
     sheet      = load_image(ASSET_PLAYER)
@@ -321,9 +449,13 @@ def main():
     F         = FLOOR_Y
     platforms = build_platforms()
     boxes     = build_boxes()
+    apples    = build_apples()
+    chain     = build_chain()
+    key       = build_key()
     player    = Player(rect=pygame.Rect(120, F - HB_H, HB_W, HB_H))
     carried   = None
-    goal_rect = pygame.Rect(2550, F - PLAT3_H - 22, 80, 22)
+    thrown    = []
+    goal_rect = pygame.Rect(DOOR_X, DOOR_Y, 90, 135)
 
     state = {
         "cam_x":       0.0,
@@ -335,21 +467,31 @@ def main():
         "fade_alpha":  0.0,
         "fade_state":  None,
         "fade_target": None,
+        "aim_active":  False,
+        "aim_angle":   math.radians(66),
+        "aim_dir":     1.0,
     }
 
     def reset():
-        nonlocal boxes, carried
+        nonlocal boxes, apples, chain, key, carried, thrown
         player.rect.topleft = (120, F - HB_H)
         player.vx = player.vy = 0.0
         player.on_ground = False
         player.carrying  = False
+        player.apples    = 0
+        player.has_key   = False
         carried          = None
+        thrown           = []
         boxes            = build_boxes()
+        apples           = build_apples()
+        chain            = build_chain()
+        key              = build_key()
         state.update({
             "cam_x": 0.0, "cam_y": 0.0,
             "won": False, "win_timer": 0.0,
             "anim_timer": 0.0, "anim_frame": 0,
             "fade_alpha": 0.0, "fade_state": None, "fade_target": None,
+            "aim_active": False, "aim_angle": math.radians(66), "aim_dir": 1.0,
         })
 
     while True:
@@ -380,6 +522,21 @@ def main():
                                 carried         = b
                                 player.carrying = True
                                 break
+                if event.key == pygame.K_f:
+                    if player.apples > 0 and not state["aim_active"]:
+                        state["aim_active"] = True
+            if event.type == pygame.KEYUP:
+                if event.key == pygame.K_f and state["aim_active"]:
+                    state["aim_active"] = False
+                    angle = state["aim_angle"]
+                    vx_t  = THROW_SPEED * math.cos(angle)
+                    vy_t  = -THROW_SPEED * math.sin(angle)
+                    if not player.facing_right:
+                        vx_t = -vx_t
+                    ox = float(player.rect.centerx)
+                    oy = float(player.rect.centery - 10)
+                    thrown.append(ThrownApple(x=ox, y=oy, vx=vx_t, vy=vy_t))
+                    player.apples = max(0, player.apples - 1)
 
         if state["fade_state"] == "out":
             state["fade_alpha"] = min(1.0, state["fade_alpha"] + dt * 10.0)
@@ -394,6 +551,17 @@ def main():
 
         if state["fade_state"] != "out":
             player.handle_input(pygame.key.get_pressed(), dt)
+
+        if state["aim_active"]:
+            ang      = state["aim_angle"]
+            ang     += state["aim_dir"] * PENDULUM_SPEED * dt
+            if ang >= math.radians(80):
+                ang              = math.radians(80)
+                state["aim_dir"] = -1.0
+            elif ang <= math.radians(10):
+                ang              = math.radians(10)
+                state["aim_dir"] = 1.0
+            state["aim_angle"] = ang
 
         player.vy += GRAVITY * dt
         player.rect.x += int(player.vx * dt)
@@ -436,7 +604,43 @@ def main():
             if not player.carrying:
                 resolve_player_box_collision(player, b)
 
-        if not state["won"] and player.rect.colliderect(goal_rect):
+        for a in thrown:
+            update_thrown_apple(a, platforms, dt)
+
+        if not chain.broken:
+            chain.shake_t = max(0.0, chain.shake_t - dt)
+            for a in thrown:
+                if a.dead:
+                    continue
+                ar = pygame.Rect(int(a.x) - 8, int(a.y) - 8, 16, 16)
+                chain_rect = pygame.Rect(chain.x - 8, chain.top_y, 16, chain.length)
+                if ar.colliderect(chain_rect):
+                    a.dead       = True
+                    chain.hits  += 1
+                    chain.shake_t = 0.35
+                    if chain.hits >= CHAIN_HITS:
+                        chain.broken = True
+                        key.falling  = True
+
+        thrown = [a for a in thrown if not a.dead]
+
+        update_key_physics(key, platforms, dt)
+
+        if not key.collected and not key.falling:
+            key.rect.x = chain.x - 24
+            key.rect.y = KEY_HANG_Y
+
+        for ap in apples:
+            if not ap.collected and player.rect.colliderect(ap.rect):
+                ap.collected  = True
+                player.apples = min(3, player.apples + 1)
+
+        if not player.has_key and not key.collected and \
+           player.rect.colliderect(key.rect):
+            key.collected  = True
+            player.has_key = True
+
+        if not state["won"] and player.has_key and player.rect.colliderect(goal_rect):
             state["won"] = True
 
         if state["won"]:
@@ -469,6 +673,24 @@ def main():
             pygame.draw.rect(screen, (80, 40, 10),
                 pygame.Rect(p.rect.x - cx, p.rect.y - cy, p.rect.width, p.rect.height), 2)
 
+        door_img = door_open_img if (state["won"] or player.has_key) else door_closed_img
+        screen.blit(door_img, (DOOR_X - cx, DOOR_Y - cy))
+
+        for ap in apples:
+            if not ap.collected:
+                screen.blit(apple_img, (ap.rect.x - cx, ap.rect.y - cy))
+
+        if not chain.broken:
+            shk = int(math.sin(chain.shake_t * 40) * 3) if chain.shake_t > 0 else 0
+            seg_h = chain_img.get_height()
+            y_cur = chain.top_y
+            while y_cur < chain.top_y + chain.length:
+                screen.blit(chain_img, (chain.x - 8 + shk - cx, y_cur - cy))
+                y_cur += seg_h
+
+        if not key.collected:
+            screen.blit(key_img, (key.rect.x - cx, key.rect.y - cy))
+
         for b in boxes:
             if b.dead:
                 ghost = crate_broken.copy()
@@ -485,6 +707,25 @@ def main():
                 screen.blit(gl, (bx_d - 6, by_d - 6))
             screen.blit(img, (bx_d, by_d))
 
+        for a in thrown:
+            screen.blit(apple_img, (int(a.x) - 20 - cx, int(a.y) - 20 - cy))
+
+        if state["aim_active"] and player.apples > 0:
+            angle = state["aim_angle"]
+            vx_p  = THROW_SPEED * math.cos(angle)
+            vy_p  = -THROW_SPEED * math.sin(angle)
+            if not player.facing_right:
+                vx_p = -vx_p
+            ox = float(player.rect.centerx)
+            oy = float(player.rect.centery - 10)
+            pts = arc_points(ox, oy, vx_p, vy_p, GRAVITY_APPLE, THROW_DOTS, THROW_PREVIEW_T)
+            for i, (px, py) in enumerate(pts):
+                alpha = int(220 * (1.0 - i / THROW_DOTS))
+                r = 5 if i % 2 == 0 else 3
+                dot_surf = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
+                pygame.draw.circle(dot_surf, (255, 220, 50, alpha), (r, r), r)
+                screen.blit(dot_surf, (int(px) - cx - r, int(py) - cy - r))
+
         moving = abs(player.vx) > 5
         if moving:
             state["anim_timer"] += dt
@@ -499,7 +740,7 @@ def main():
                   walk_left [state["anim_frame"]] if player.vx < -5 else img_idle)
         screen.blit(sprite, (player.rect.x - cx + SP_OX, player.rect.y + SP_OY - cy))
 
-        ui_bg = pygame.Surface((300, 60), pygame.SRCALPHA)
+        ui_bg = pygame.Surface((300, 82), pygame.SRCALPHA)
         ui_bg.fill((0, 0, 0, 120))
         screen.blit(ui_bg, (10, 10))
 
@@ -512,12 +753,16 @@ def main():
         screen.blit(font.render(
             f"Rýchlosť: {spd_pct}%   Skok: {jump_pct}%",
             True, (200, 200, 255)), (18, 38))
+        apple_col = (255, 180, 50) if player.apples > 0 else (160, 160, 160)
+        screen.blit(font.render(
+            f"Jablká: {player.apples}/3",
+            True, apple_col), (18, 61))
 
-        hint_bg = pygame.Surface((400, 28), pygame.SRCALPHA)
+        hint_bg = pygame.Surface((560, 28), pygame.SRCALPHA)
         hint_bg.fill((0, 0, 0, 100))
         screen.blit(hint_bg, (10, HEIGHT - 38))
         screen.blit(font.render(
-            "← → pohyb  |  SPACE skok  |  E zdvihnúť/položiť  |  R reštart",
+            "← → pohyb  |  SPACE skok  |  E zdvihnúť/položiť  |  F hodiť jablko  |  R reštart",
             True, (220, 220, 220)), (16, HEIGHT - 34))
 
         if state["fade_state"] is not None:
