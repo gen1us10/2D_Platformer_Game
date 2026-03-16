@@ -27,26 +27,26 @@ CARRY_JUMP_MULT  = 0.65
 APPLE_SPEED_MULT = 0.10
 APPLE_JUMP_MULT  = 0.10
 
-THROW_SPEED      = 550.0
-THROW_PREVIEW_T  = 1.8
-THROW_DOTS       = 16
-PENDULUM_SPEED   = 1.4
+THROW_SPEED     = 550.0
+THROW_PREVIEW_T = 1.8
+THROW_DOTS      = 16
+PENDULUM_SPEED  = 1.4
 
-PICKUP_DIST = 70
-FLOOR_Y     = HEIGHT - 80
+PICKUP_DIST   = 70
+FLOOR_Y       = HEIGHT - 80
 CAM_THRESHOLD = WIDTH // 2
-WORLD_W     = 3200
-BOX_SIZE    = 60
-FALL_VY     = 400.0
-CHAIN_HITS       = 2
+WORLD_W       = 2810
+BOX_SIZE      = 60
+FALL_VY       = 400.0
+CHAIN_HITS    = 2
 
 PLAT1_H = 60
 PLAT2_H = 200
 PLAT3_H = 380
 
-CHAIN_X   = 2320
-CHAIN_TOP = FLOOR_Y - PLAT3_H - 22
-CHAIN_LEN = 120
+CHAIN_X    = 2320
+CHAIN_TOP  = FLOOR_Y - PLAT3_H
+CHAIN_LEN  = 120
 KEY_HANG_Y = CHAIN_TOP + CHAIN_LEN
 
 DOOR_X = 80
@@ -156,6 +156,7 @@ class Key:
     on_ground: bool = False
     collected: bool = False
     falling: bool = False
+    shake_t: float = 0.0
 
 
 def load_image(path):
@@ -258,9 +259,9 @@ def build_boxes():
 def build_apples():
     F = FLOOR_Y
     return [
-        Apple(rect=pygame.Rect(620,  F - PLAT1_H - 40, 40, 40)),
-        Apple(rect=pygame.Rect(1500, F - PLAT2_H - 40, 40, 40)),
-        Apple(rect=pygame.Rect(2220, F - PLAT3_H - 40, 40, 40)),
+        Apple(rect=pygame.Rect(680,  F - PLAT1_H - 40, 40, 40)),
+        Apple(rect=pygame.Rect(1560, F - PLAT2_H - 40, 40, 40)),
+        Apple(rect=pygame.Rect(2280, F - PLAT3_H - 40, 40, 40)),
     ]
 
 
@@ -609,6 +610,7 @@ def main():
 
         if not chain.broken:
             chain.shake_t = max(0.0, chain.shake_t - dt)
+            key.shake_t   = max(0.0, key.shake_t   - dt)
             for a in thrown:
                 if a.dead:
                     continue
@@ -618,6 +620,7 @@ def main():
                     a.dead       = True
                     chain.hits  += 1
                     chain.shake_t = 0.35
+                    key.shake_t   = 0.35
                     if chain.hits >= CHAIN_HITS:
                         chain.broken = True
                         key.falling  = True
@@ -689,7 +692,8 @@ def main():
                 y_cur += seg_h
 
         if not key.collected:
-            screen.blit(key_img, (key.rect.x - cx, key.rect.y - cy))
+            shk_k = int(math.sin(key.shake_t * 40) * 3) if key.shake_t > 0 else 0
+            screen.blit(key_img, (key.rect.x - cx + shk_k, key.rect.y - cy))
 
         for b in boxes:
             if b.dead:
@@ -723,7 +727,7 @@ def main():
                 alpha = int(220 * (1.0 - i / THROW_DOTS))
                 r = 5 if i % 2 == 0 else 3
                 dot_surf = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
-                pygame.draw.circle(dot_surf, (255, 220, 50, alpha), (r, r), r)
+                pygame.draw.circle(dot_surf, (255, 80, 80, alpha), (r, r), r)
                 screen.blit(dot_surf, (int(px) - cx - r, int(py) - cy - r))
 
         moving = abs(player.vx) > 5
@@ -758,7 +762,7 @@ def main():
             f"Jablká: {player.apples}/3",
             True, apple_col), (18, 61))
 
-        hint_bg = pygame.Surface((560, 28), pygame.SRCALPHA)
+        hint_bg = pygame.Surface((600, 36), pygame.SRCALPHA)
         hint_bg.fill((0, 0, 0, 100))
         screen.blit(hint_bg, (10, HEIGHT - 38))
         screen.blit(font.render(
