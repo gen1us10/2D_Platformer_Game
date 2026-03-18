@@ -172,11 +172,8 @@ KEY_PLATFORM_IDX  = 8
 DOOR_PLATFORM_IDX = 15
 
 
-def main():
-    pygame.init()
-    screen   = pygame.display.set_mode((WIDTH, HEIGHT))
+def run(screen, clock):
     pygame.display.set_caption("Level 1 – Gravitácia a základný pohyb")
-    clock    = pygame.time.Clock()
     font     = pygame.font.SysFont("Arial", 20)
     font_big = pygame.font.SysFont("Arial", 36, bold=True)
 
@@ -251,10 +248,13 @@ def main():
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                return
+                return "quit"
             if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    return "menu"
                 if event.key == pygame.K_r:
+                    if won:
+                        return "won"
                     reset()
                 if event.key in (pygame.K_SPACE, pygame.K_UP, pygame.K_w):
                     player.request_jump()
@@ -279,13 +279,11 @@ def main():
 
         player.update_jump(dt)
 
-        # камера
         target_cam = player.rect.centerx - CAM_THRESHOLD
         target_cam = max(0, min(target_cam, WORLD_W - WIDTH))
         cam_x += (target_cam - cam_x) * min(1.0, 8.0 * dt)
         cx = int(cam_x)
 
-        # ключ
         key.bob_timer += dt
         bob_y    = int(math.sin(key.bob_timer * 3.0) * 5)
         key_draw = pygame.Rect(key.rect.x, key.rect.y + bob_y, key.rect.width, key.rect.height)
@@ -304,7 +302,6 @@ def main():
         if won:
             win_timer += dt
 
-        # --- render ---
         bg_offset = int(cx * 0.4) % WIDTH
         screen.blit(bg_scaled, (-bg_offset, 0))
         screen.blit(bg_scaled, (WIDTH - bg_offset, 0))
@@ -327,7 +324,6 @@ def main():
         door_sprite = door_img_open if door.is_open else door_img_closed
         screen.blit(door_sprite, (door.rect.x - cx, door.rect.y))
 
-        # анимация
         if player.vx != 0:
             anim_timer += dt
             if anim_timer >= 1.0 / 8:
@@ -346,7 +342,6 @@ def main():
 
         screen.blit(sprite, (player.rect.x - cx + SP_OX, player.rect.y + SP_OY))
 
-        # UI
         ui_bg = pygame.Surface((300, 60), pygame.SRCALPHA)
         ui_bg.fill((0, 0, 0, 120))
         screen.blit(ui_bg, (10, 10))
@@ -355,27 +350,26 @@ def main():
         screen.blit(font.render("Dvere: OTVORENÉ" if door.is_open  else "Dvere: ZATVORENÉ",
                                 True, (200, 200, 255)), (18, 38))
 
-        info_bg = pygame.Surface((240, 56), pygame.SRCALPHA)
-        info_bg.fill((0, 0, 0, 100))
-        screen.blit(info_bg, (WIDTH - 250, 10))
-        screen.blit(font.render(f"vx = {player.vx:+.0f} px/s", True, (180, 230, 255)), (WIDTH - 244, 14))
-        screen.blit(font.render(f"vy = {player.vy:+.0f} px/s", True, (180, 230, 255)), (WIDTH - 244, 36))
-
-        hint_bg = pygame.Surface((310, 28), pygame.SRCALPHA)
+        hint_bg = pygame.Surface((415, 30), pygame.SRCALPHA)
         hint_bg.fill((0, 0, 0, 100))
         screen.blit(hint_bg, (10, HEIGHT - 38))
-        screen.blit(font.render("← → pohyb  |  SPACE skok  |  R reštart", True, (220, 220, 220)), (16, HEIGHT - 34))
+        screen.blit(font.render("← → pohyb  |  SPACE skok  |  R reštart  |  ESC menu",
+                                True, (220, 220, 220)), (16, HEIGHT - 34))
 
         if won:
             alpha = min(1.0, win_timer / 0.5)
             overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, int(120 * alpha)))
             screen.blit(overlay, (0, 0))
-            msg = font_big.render("Úroveň dokončená! Stlač R pre reštart.", True, (255, 255, 100))
+            msg = font_big.render("Úroveň dokončená! Stlač R pre ďalší level.", True, (255, 255, 100))
             screen.blit(msg, msg.get_rect(center=(WIDTH // 2, HEIGHT // 2)))
 
         pygame.display.flip()
 
 
 if __name__ == "__main__":
-    main()
+    pygame.init()
+    _screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    _clock  = pygame.time.Clock()
+    run(_screen, _clock)
+    pygame.quit()

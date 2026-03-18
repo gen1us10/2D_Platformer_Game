@@ -383,11 +383,107 @@ def build_key_pushboxes():
     ]
 
 
-def main():
-    pygame.init()
-    screen  = pygame.display.set_mode((WIDTH, HEIGHT))
-    pygame.display.set_caption("Level 4")
-    clock   = pygame.time.Clock()
+def update_pushboxes(boxes, platforms, hazards, world_w, dt):
+    boxes_to_remove = []
+    boxes_to_add    = []
+    for b in boxes:
+        if b.dead:
+            b.respawn_timer -= dt
+            if b.respawn_timer <= 0:
+                boxes_to_add.append(PushBox(
+                    rect=pygame.Rect(b.spawn_x, b.spawn_y, BOX_SIZE, BOX_SIZE),
+                    spawn_x=b.spawn_x, spawn_y=b.spawn_y,
+                ))
+                boxes_to_remove.append(b)
+            continue
+
+        b.vy += GRAVITY * dt
+        b.rect.x += b.vx * dt
+        for p in platforms:
+            if p.kind == "wall" or not b.rect.colliderect(p.rect):
+                continue
+            if b.vx > 0:
+                b.rect.right = p.rect.left
+                b.vx = 0.0
+            elif b.vx < 0:
+                b.rect.left = p.rect.right
+                b.vx = 0.0
+
+        ground_p    = None
+        b.on_ground = False
+        b.rect.y   += b.vy * dt
+        for p in platforms:
+            if p.kind == "wall" or p.kind == "crate" or not b.rect.colliderect(p.rect):
+                continue
+            if b.vy > 0:
+                b.rect.bottom = p.rect.top
+                b.on_ground   = True
+                b.vy          = 0
+                ground_p      = p
+            elif b.vy < 0:
+                b.rect.top = p.rect.bottom
+                b.vy       = 0
+
+        if b.on_ground and ground_p:
+            decel = 150.0 if ground_p.kind == "ice" else 800.0
+            if b.vx > 0:
+                b.vx = max(0.0, b.vx - decel * dt)
+            elif b.vx < 0:
+                b.vx = min(0.0, b.vx + decel * dt)
+
+        for h in hazards:
+            if h.kind == "spike":
+                if b.rect.colliderect(pygame.Rect(h.x - 20, h.y - 20, 40, 40)):
+                    b.dead = True
+                    b.respawn_timer = BOX_RESPAWN_TIME
+                    break
+            elif h.kind == "saw":
+                if b.rect.colliderect(pygame.Rect(h.x - SAW_RADIUS, h.y - SAW_RADIUS, SAW_RADIUS * 2, SAW_RADIUS * 2)):
+                    b.dead = True
+                    b.respawn_timer = BOX_RESPAWN_TIME
+                    break
+
+        if not b.dead and (b.rect.top > FLOOR_Y + 50 or b.rect.right < 0 or b.rect.left > world_w):
+            b.dead = True
+            b.respawn_timer = BOX_RESPAWN_TIME
+
+    for b in boxes_to_remove:
+        boxes.remove(b)
+    boxes.extend(boxes_to_add)
+
+
+def handle_player_box_collision(player, boxes):
+    standing_on_box = False
+    for b in boxes:
+        if b.dead or not player.rect.colliderect(b.rect):
+            continue
+        olx = player.rect.right  - b.rect.left
+        orx = b.rect.right - player.rect.left
+        oty = player.rect.bottom - b.rect.top
+        oby = b.rect.bottom - player.rect.top
+        min_x = min(olx, orx)
+        min_y = min(oty, oby)
+        if min_y < min_x:
+            if oty < oby and player.vy >= 0:
+                player.rect.bottom = b.rect.top
+                player.on_ground   = True
+                player.vy          = 0
+                standing_on_box    = True
+            elif oby < oty and player.vy < 0:
+                player.rect.top = b.rect.bottom
+                player.vy       = 0
+        else:
+            if olx < orx and player.vx > 0:
+                b.vx = max(b.vx, player.vx * 0.4)
+                player.rect.right = b.rect.left
+            elif orx < olx and player.vx < 0:
+                b.vx = min(b.vx, player.vx * 0.4)
+                player.rect.left = b.rect.right
+    return standing_on_box
+
+
+def run(screen, clock):
+    pygame.display.set_caption("Level 4 – Povrchy s rôznym trením ")
     font    = pygame.font.SysFont("Arial", 20)
     font_big = pygame.font.SysFont("Arial", 36, bold=True)
 
@@ -527,13 +623,17 @@ def main():
         hazards   = main_hazards   if scene == "main" else key_hazards
         springs   = main_springs   if scene == "main" else []
         world_w   = MAIN_WORLD_W   if scene == "main" else KEY_WORLD_W
+        boxes     = main_pushboxes if scene == "main" else key_pushboxes
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                return
+                return "quit"
             if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    return "menu"
                 if event.key == pygame.K_r:
+                    if state.get("won", False):
+                        return "won"
                     reset()
                 if event.key in (pygame.K_SPACE, pygame.K_UP, pygame.K_w):
                     player.request_jump()
@@ -593,228 +693,20 @@ def main():
                     s.animating  = False
                     s.anim_timer = 0.0
 
-        if scene == "key_zone":
-            for b in key_pushboxes:
-                if b.dead:
-                    continue
-                if player.rect.colliderect(b.rect):
-                    overlap_x_left  = player.rect.right - b.rect.left
-                    overlap_x_right = b.rect.right - player.rect.left
-                    overlap_y_top   = player.rect.bottom - b.rect.top
-                    overlap_y_bot   = b.rect.bottom - player.rect.top
-                    min_x = min(overlap_x_left, overlap_x_right)
-                    min_y = min(overlap_y_top,  overlap_y_bot)
-                    if min_y < min_x:
-                        if overlap_y_top < overlap_y_bot and player.vy >= 0:
-                            player.rect.bottom = b.rect.top
-                            player.on_ground   = True
-                            player.vy          = 0
-                        elif overlap_y_bot < overlap_y_top and player.vy < 0:
-                            player.rect.top = b.rect.bottom
-                            player.vy       = 0
-                    else:
-                        if overlap_x_left < overlap_x_right and player.vx > 0:
-                            b.vx = max(b.vx, player.vx * 0.4)
-                            player.rect.right = b.rect.left
-                        elif overlap_x_right < overlap_x_left and player.vx < 0:
-                            b.vx = min(b.vx, player.vx * 0.4)
-                            player.rect.left = b.rect.right
+        standing_on_box = handle_player_box_collision(player, boxes)
 
-            standing_on_box = any(
-                not b.dead and
-                player.rect.bottom == b.rect.top and
-                player.rect.right > b.rect.left and
-                player.rect.left  < b.rect.right
-                for b in key_pushboxes
-            )
+        if was_on_ground and not player.on_ground and not standing_on_box:
+            player.coyote_timer = player.COYOTE_TIME
 
-            if was_on_ground and not player.on_ground and not standing_on_box:
-                player.coyote_timer = player.COYOTE_TIME
-
-            ground_plat = get_ground_platform(player, platforms)
-            if player.on_ground:
-                if standing_on_box:
-                    apply_friction(player, dt, FRICTION_NORMAL)
-                elif ground_plat and ground_plat.kind != "ice":
+        if player.on_ground:
+            if standing_on_box:
+                apply_friction(player, dt, FRICTION_NORMAL)
+            else:
+                ground_plat = get_ground_platform(player, platforms)
+                if ground_plat and ground_plat.kind != "ice":
                     apply_friction(player, dt, ground_plat.friction)
 
-        else:
-            standing_on_box_main = any(
-                not b.dead and
-                player.rect.bottom == b.rect.top and
-                player.rect.right > b.rect.left and
-                player.rect.left  < b.rect.right
-                for b in main_pushboxes
-            )
-            if was_on_ground and not player.on_ground and not standing_on_box_main:
-                player.coyote_timer = player.COYOTE_TIME
-            ground_plat = get_ground_platform(player, platforms)
-            if player.on_ground:
-                if standing_on_box_main:
-                    apply_friction(player, dt, FRICTION_NORMAL)
-                elif ground_plat and ground_plat.kind != "ice":
-                    apply_friction(player, dt, ground_plat.friction)
-
-        if scene == "key_zone":
-            boxes_to_remove = []
-            boxes_to_add    = []
-            for b in key_pushboxes:
-                if b.dead:
-                    b.respawn_timer -= dt
-                    if b.respawn_timer <= 0:
-                        boxes_to_add.append(PushBox(
-                            rect    = pygame.Rect(b.spawn_x, b.spawn_y, BOX_SIZE, BOX_SIZE),
-                            spawn_x = b.spawn_x,
-                            spawn_y = b.spawn_y,
-                        ))
-                        boxes_to_remove.append(b)
-                    continue
-
-                b.vy += GRAVITY * dt
-                b.rect.x += b.vx * dt
-                for p in key_platforms:
-                    if p.kind == "wall" or not b.rect.colliderect(p.rect):
-                        continue
-                    if b.vx > 0:
-                        b.rect.right = p.rect.left
-                        b.vx = 0.0
-                    elif b.vx < 0:
-                        b.rect.left = p.rect.right
-                        b.vx = 0.0
-
-                ground_p = None
-                b.on_ground = False
-                b.rect.y += b.vy * dt
-                for p in key_platforms:
-                    if p.kind == "wall" or p.kind == "crate" or not b.rect.colliderect(p.rect):
-                        continue
-                    if b.vy > 0:
-                        b.rect.bottom = p.rect.top
-                        b.on_ground   = True
-                        b.vy          = 0
-                        ground_p      = p
-                    elif b.vy < 0:
-                        b.rect.top = p.rect.bottom
-                        b.vy       = 0
-
-                if b.on_ground and ground_p:
-                    decel = 150.0 if ground_p.kind == "ice" else 800.0
-                    if b.vx > 0:
-                        b.vx = max(0.0, b.vx - decel * dt)
-                    elif b.vx < 0:
-                        b.vx = min(0.0, b.vx + decel * dt)
-
-                for h in key_hazards:
-                    if h.kind == "spike":
-                        if b.rect.colliderect(pygame.Rect(h.x - 20, h.y - 20, 40, 40)):
-                            b.dead = True
-                            b.respawn_timer = BOX_RESPAWN_TIME
-                            break
-                    elif h.kind == "saw":
-                        if b.rect.colliderect(pygame.Rect(h.x - SAW_RADIUS, h.y - SAW_RADIUS, SAW_RADIUS * 2, SAW_RADIUS * 2)):
-                            b.dead = True
-                            b.respawn_timer = BOX_RESPAWN_TIME
-                            break
-
-                if not b.dead and (b.rect.top > FLOOR_Y + 50 or b.rect.right < 0 or b.rect.left > KEY_WORLD_W):
-                    b.dead = True
-                    b.respawn_timer = BOX_RESPAWN_TIME
-
-            for b in boxes_to_remove:
-                key_pushboxes.remove(b)
-            key_pushboxes.extend(boxes_to_add)
-
-        if scene == "main":
-            boxes_to_remove = []
-            boxes_to_add    = []
-            for b in main_pushboxes:
-                if b.dead:
-                    b.respawn_timer -= dt
-                    if b.respawn_timer <= 0:
-                        boxes_to_add.append(PushBox(
-                            rect    = pygame.Rect(b.spawn_x, b.spawn_y, BOX_SIZE, BOX_SIZE),
-                            spawn_x = b.spawn_x,
-                            spawn_y = b.spawn_y,
-                        ))
-                        boxes_to_remove.append(b)
-                    continue
-
-                b.vy += GRAVITY * dt
-                b.rect.x += b.vx * dt
-                for p in main_platforms:
-                    if p.kind == "wall" or not b.rect.colliderect(p.rect):
-                        continue
-                    if b.vx > 0:
-                        b.rect.right = p.rect.left
-                        b.vx = 0.0
-                    elif b.vx < 0:
-                        b.rect.left = p.rect.right
-                        b.vx = 0.0
-
-                ground_p    = None
-                b.on_ground = False
-                b.rect.y   += b.vy * dt
-                for p in main_platforms:
-                    if p.kind == "wall" or p.kind == "crate" or not b.rect.colliderect(p.rect):
-                        continue
-                    if b.vy > 0:
-                        b.rect.bottom = p.rect.top
-                        b.on_ground   = True
-                        b.vy          = 0
-                        ground_p      = p
-                    elif b.vy < 0:
-                        b.rect.top = p.rect.bottom
-                        b.vy       = 0
-
-                if b.on_ground and ground_p:
-                    decel = 150.0 if ground_p.kind == "ice" else 800.0
-                    if b.vx > 0:
-                        b.vx = max(0.0, b.vx - decel * dt)
-                    elif b.vx < 0:
-                        b.vx = min(0.0, b.vx + decel * dt)
-
-                if player.rect.colliderect(b.rect):
-                    overlap_x_left  = player.rect.right - b.rect.left
-                    overlap_x_right = b.rect.right - player.rect.left
-                    overlap_y_top   = player.rect.bottom - b.rect.top
-                    overlap_y_bot   = b.rect.bottom - player.rect.top
-                    min_x = min(overlap_x_left, overlap_x_right)
-                    min_y = min(overlap_y_top,  overlap_y_bot)
-                    if min_y < min_x:
-                        if overlap_y_top < overlap_y_bot and player.vy >= 0:
-                            player.rect.bottom = b.rect.top
-                            player.on_ground   = True
-                            player.vy          = 0
-                        elif overlap_y_bot < overlap_y_top and player.vy < 0:
-                            player.rect.top = b.rect.bottom
-                            player.vy       = 0
-                    else:
-                        if overlap_x_left < overlap_x_right and player.vx > 0:
-                            b.vx = max(b.vx, player.vx * 0.4)
-                            player.rect.right = b.rect.left
-                        elif overlap_x_right < overlap_x_left and player.vx < 0:
-                            b.vx = min(b.vx, player.vx * 0.4)
-                            player.rect.left = b.rect.right
-
-                for h in main_hazards:
-                    if h.kind == "spike":
-                        if b.rect.colliderect(pygame.Rect(h.x - 20, h.y - 20, 40, 40)):
-                            b.dead = True
-                            b.respawn_timer = BOX_RESPAWN_TIME
-                            break
-                    elif h.kind == "saw":
-                        if b.rect.colliderect(pygame.Rect(h.x - SAW_RADIUS, h.y - SAW_RADIUS, SAW_RADIUS * 2, SAW_RADIUS * 2)):
-                            b.dead = True
-                            b.respawn_timer = BOX_RESPAWN_TIME
-                            break
-
-                if not b.dead and (b.rect.top > FLOOR_Y + 50 or b.rect.right < 0 or b.rect.left > MAIN_WORLD_W):
-                    b.dead = True
-                    b.respawn_timer = BOX_RESPAWN_TIME
-
-            for b in boxes_to_remove:
-                main_pushboxes.remove(b)
-            main_pushboxes.extend(boxes_to_add)
+        update_pushboxes(boxes, platforms, hazards, world_w, dt)
 
         player.update_jump(dt)
 
@@ -863,16 +755,10 @@ def main():
         state["cam_x"] = cam_x
         cx = int(cam_x)
 
-        if scene == "key_zone":
-            target_y = player.rect.centery - HEIGHT // 2
-            target_y = max(-HEIGHT, min(target_y, 0))
-            cam_y   += (target_y - cam_y) * min(1.0, 8.0 * dt)
-            state["cam_y"] = cam_y
-        elif scene == "main":
-            target_y = player.rect.centery - HEIGHT // 2
-            target_y = max(-HEIGHT, min(target_y, 0))
-            cam_y   += (target_y - cam_y) * min(1.0, 8.0 * dt)
-            state["cam_y"] = cam_y
+        target_y = player.rect.centery - HEIGHT // 2
+        target_y = max(-HEIGHT, min(target_y, 0))
+        cam_y   += (target_y - cam_y) * min(1.0, 8.0 * dt)
+        state["cam_y"] = cam_y
         cy = int(cam_y)
 
         bg_offset = int(cx * 0.4) % WIDTH
@@ -914,31 +800,17 @@ def main():
 
         screen.blit(door_img_open, (door_a.rect.x - cx, door_a.rect.y - cy))
 
-        if scene == "key_zone":
-            for b in key_pushboxes:
-                if b.dead:
-                    ghost = crate_img.copy()
-                    ghost.set_alpha(60)
-                    screen.blit(ghost, (b.spawn_x - cx, b.spawn_y - cy))
-                    secs = int(b.respawn_timer) + 1
-                    t = font.render(str(secs), True, (255, 255, 255))
-                    screen.blit(t, (b.spawn_x - cx + BOX_SIZE // 2 - t.get_width() // 2,
-                                    b.spawn_y - cy + BOX_SIZE // 2 - t.get_height() // 2))
-                else:
-                    screen.blit(crate_img, (b.rect.x - cx, b.rect.y - cy))
-
-        if scene == "main":
-            for b in main_pushboxes:
-                if b.dead:
-                    ghost = crate_img.copy()
-                    ghost.set_alpha(60)
-                    screen.blit(ghost, (b.spawn_x - cx, b.spawn_y - cy))
-                    secs = int(b.respawn_timer) + 1
-                    t = font.render(str(secs), True, (255, 255, 255))
-                    screen.blit(t, (b.spawn_x - cx + BOX_SIZE // 2 - t.get_width() // 2,
-                                    b.spawn_y - cy + BOX_SIZE // 2 - t.get_height() // 2))
-                else:
-                    screen.blit(crate_img, (b.rect.x - cx, b.rect.y - cy))
+        for b in boxes:
+            if b.dead:
+                ghost = crate_img.copy()
+                ghost.set_alpha(60)
+                screen.blit(ghost, (b.spawn_x - cx, b.spawn_y - cy))
+                secs = int(b.respawn_timer) + 1
+                t = font.render(str(secs), True, (255, 255, 255))
+                screen.blit(t, (b.spawn_x - cx + BOX_SIZE // 2 - t.get_width() // 2,
+                                b.spawn_y - cy + BOX_SIZE // 2 - t.get_height() // 2))
+            else:
+                screen.blit(crate_img, (b.rect.x - cx, b.rect.y - cy))
 
         if scene == "key_zone" and not key.collected:
             kx = key_draw.x - cx
@@ -977,10 +849,10 @@ def main():
             hint = font.render("[E] Vstúpiť / Vyjsť", True, (255, 255, 255))
             screen.blit(hint, (door_a.rect.x - cx, door_a.rect.y - cy - 30))
 
-        hint_bg = pygame.Surface((400, 28), pygame.SRCALPHA)
+        hint_bg = pygame.Surface((420, 30), pygame.SRCALPHA)
         hint_bg.fill((0, 0, 0, 100))
         screen.blit(hint_bg, (10, HEIGHT - 38))
-        screen.blit(font.render("← → pohyb  |  SPACE skok  |  R reštart",
+        screen.blit(font.render("← → pohyb  |  SPACE skok  |  R reštart  |  ESC menu",
                                 True, (220, 220, 220)), (16, HEIGHT - 34))
 
         if state["fade_state"] is not None:
@@ -994,7 +866,7 @@ def main():
             ov2 = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
             ov2.fill((0, 0, 0, int(120 * a)))
             screen.blit(ov2, (0, 0))
-            msg = font_big.render("Úroveň dokončená! Stlač R pre reštart.",
+            msg = font_big.render("Úroveň dokončená! Stlač R pre ďalší level.",
                                   True, (255, 255, 100))
             screen.blit(msg, msg.get_rect(center=(WIDTH // 2, HEIGHT // 2)))
 
@@ -1002,4 +874,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    pygame.init()
+    _screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    _clock  = pygame.time.Clock()
+    run(_screen, _clock)
+    pygame.quit()

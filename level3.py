@@ -294,7 +294,6 @@ def build_key_hazards():
 def build_key_springs():
     F = FLOOR_Y
     R = SPRING_RESTITUTION
-    plat = build_key_platforms()
 
     def sp(x, base):
         return Spring(x=x, base_y=base, restitution=R)
@@ -308,11 +307,8 @@ def build_key_springs():
     ]
 
 
-def main():
-    pygame.init()
-    screen   = pygame.display.set_mode((WIDTH, HEIGHT))
+def run(screen, clock):
     pygame.display.set_caption("Level 3 – Odraz od pružných platforiem")
-    clock    = pygame.time.Clock()
     font     = pygame.font.SysFont("Arial", 20)
     font_big = pygame.font.SysFont("Arial", 36, bold=True)
 
@@ -367,7 +363,7 @@ def main():
     door_a = Door(rect=pygame.Rect(80, FLOOR_Y - DOOR_H, DOOR_W, DOOR_H))
     door_a.is_open = True
 
-    door_b_plat = main_platforms[11]
+    door_b_plat = build_main_platforms()[11]
     door_b = Door(rect=pygame.Rect(
         door_b_plat.rect.centerx - DOOR_W // 2,
         door_b_plat.rect.top - DOOR_H,
@@ -438,10 +434,13 @@ def main():
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                return
+                return "quit"
             if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    return "menu"
                 if event.key == pygame.K_r:
+                    if state.get("won", False):
+                        return "won"
                     reset()
                 if event.key in (pygame.K_SPACE, pygame.K_UP, pygame.K_w):
                     player.request_jump()
@@ -624,10 +623,10 @@ def main():
             hint = font.render("[E] Vstúpiť / Vyjsť", True, (255, 255, 255))
             screen.blit(hint, (door_a.rect.x - cx, door_a.rect.y - cy - 30))
 
-        hint_bg = pygame.Surface((400, 28), pygame.SRCALPHA)
+        hint_bg = pygame.Surface((420, 30), pygame.SRCALPHA)
         hint_bg.fill((0, 0, 0, 100))
         screen.blit(hint_bg, (10, HEIGHT - 38))
-        screen.blit(font.render("← → pohyb  |  SPACE skok  |  R reštart",
+        screen.blit(font.render("← → pohyb  |  SPACE skok  |  R reštart  |  ESC menu",
                                 True, (220, 220, 220)), (16, HEIGHT - 34))
 
         if state["fade_state"] is not None:
@@ -641,7 +640,7 @@ def main():
             ov2 = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
             ov2.fill((0, 0, 0, int(120 * a)))
             screen.blit(ov2, (0, 0))
-            msg = font_big.render("Úroveň dokončená! Stlač R pre reštart.",
+            msg = font_big.render("Úroveň dokončená! Stlač R pre ďalší level.",
                                   True, (255, 255, 100))
             screen.blit(msg, msg.get_rect(center=(WIDTH // 2, HEIGHT // 2)))
 
@@ -649,4 +648,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    pygame.init()
+    _screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    _clock  = pygame.time.Clock()
+    run(_screen, _clock)
+    pygame.quit()

@@ -409,11 +409,8 @@ def arc_points(ox, oy, vx, vy, g, n, total_t):
     return pts
 
 
-def main():
-    pygame.init()
-    screen   = pygame.display.set_mode((WIDTH, HEIGHT))
-    pygame.display.set_caption("Level 5")
-    clock    = pygame.time.Clock()
+def run(screen, clock):
+    pygame.display.set_caption("Level 5 – Hmotnosť a manipulácia s objektmi")
     font     = pygame.font.SysFont("Arial", 20)
     font_big = pygame.font.SysFont("Arial", 36, bold=True)
 
@@ -500,10 +497,13 @@ def main():
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                return
+                return "quit"
             if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    return "menu"
                 if event.key == pygame.K_r:
+                    if state.get("won", False):
+                        return "won"
                     reset()
                 if event.key in (pygame.K_SPACE, pygame.K_UP, pygame.K_w):
                     player.request_jump()
@@ -762,11 +762,11 @@ def main():
             f"Jablká: {player.apples}/3",
             True, apple_col), (18, 61))
 
-        hint_bg = pygame.Surface((600, 36), pygame.SRCALPHA)
+        hint_bg = pygame.Surface((690, 30), pygame.SRCALPHA)
         hint_bg.fill((0, 0, 0, 100))
         screen.blit(hint_bg, (10, HEIGHT - 38))
         screen.blit(font.render(
-            "← → pohyb  |  SPACE skok  |  E zdvihnúť/položiť  |  F hodiť jablko  |  R reštart",
+            "← → pohyb  |  SPACE skok  |  E zdvihnúť/položiť  |  F hodiť jablko  |  R reštart  |  ESC menu",
             True, (220, 220, 220)), (16, HEIGHT - 34))
 
         if state["fade_state"] is not None:
@@ -780,7 +780,7 @@ def main():
             ov2 = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
             ov2.fill((0, 0, 0, int(120 * a)))
             screen.blit(ov2, (0, 0))
-            msg = font_big.render("Úroveň dokončená! Stlač R pre reštart.",
+            msg = font_big.render("Úroveň dokončená! Stlač R pre ďalší level.",
                                   True, (255, 255, 100))
             screen.blit(msg, msg.get_rect(center=(WIDTH // 2, HEIGHT // 2)))
 
@@ -788,4 +788,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    pygame.init()
+    _screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    _clock  = pygame.time.Clock()
+    run(_screen, _clock)
+    pygame.quit()

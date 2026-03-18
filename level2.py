@@ -235,11 +235,8 @@ DOOR_B_PLATFORM_IDX = 11
 KEY_PLATFORM_IDX    = 16
 
 
-def main():
-    pygame.init()
-    screen   = pygame.display.set_mode((WIDTH, HEIGHT))
+def run(screen, clock):
     pygame.display.set_caption("Level 2 – Kolízie s prekážkami (AABB)")
-    clock    = pygame.time.Clock()
     font     = pygame.font.SysFont("Arial", 20)
     font_big = pygame.font.SysFont("Arial", 36, bold=True)
 
@@ -357,10 +354,13 @@ def main():
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                return
+                return "quit"
             if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    return "menu"
                 if event.key == pygame.K_r:
+                    if state["won"]:
+                        return "won"
                     reset()
                 if event.key in (pygame.K_SPACE, pygame.K_UP, pygame.K_w):
                     player.request_jump()
@@ -508,19 +508,20 @@ def main():
         ui_bg = pygame.Surface((300, 60), pygame.SRCALPHA)
         ui_bg.fill((0, 0, 0, 120))
         screen.blit(ui_bg, (10, 10))
-        screen.blit(font.render("Kluč: ANO" if player.has_key else "Kluč: NIE",
+        screen.blit(font.render("Kľúč: ÁNO" if player.has_key else "Kľúč: NIE",
                                 True, (255, 220, 50)),  (18, 15))
-        screen.blit(font.render("Dvere: OTVORENE" if door_b.is_open else "Dvere: ZATVORENE",
+        screen.blit(font.render("Dvere: OTVORENÉ" if door_b.is_open else "Dvere: ZATVORENÉ",
                                 True, (200, 200, 255)), (18, 38))
 
         if center_distance(player.rect, door_a.rect) < DOOR_DISTANCE:
-            hint = font.render("[E] Vstúpit / Vyjst", True, (255, 255, 255))
+            hint = font.render("[E] Vstúpiť / Vyjsť", True, (255, 255, 255))
             screen.blit(hint, (door_a.rect.x - cx, door_a.rect.y - 28))
 
-        hint_bg = pygame.Surface((310, 28), pygame.SRCALPHA)
+        hint_bg = pygame.Surface((420, 30), pygame.SRCALPHA)
         hint_bg.fill((0, 0, 0, 100))
         screen.blit(hint_bg, (10, HEIGHT - 38))
-        screen.blit(font.render("<- -> pohyb  |  SPACE skok  |  R restart", True, (220, 220, 220)), (16, HEIGHT - 34))
+        screen.blit(font.render("← → pohyb  |  SPACE skok  |  R reštart  |  ESC menu",
+                                True, (220, 220, 220)), (16, HEIGHT - 34))
 
         if state["fade_state"] is not None:
             overlay = pygame.Surface((WIDTH, HEIGHT))
@@ -533,11 +534,15 @@ def main():
             overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, int(120 * alpha)))
             screen.blit(overlay, (0, 0))
-            msg = font_big.render("Uroven dokoncena! Stlac R pre restart.", True, (255, 255, 100))
+            msg = font_big.render("Úroveň dokončená! Stlač R pre ďalší level.", True, (255, 255, 100))
             screen.blit(msg, msg.get_rect(center=(WIDTH // 2, HEIGHT // 2)))
 
         pygame.display.flip()
 
 
 if __name__ == "__main__":
-    main()
+    pygame.init()
+    _screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    _clock  = pygame.time.Clock()
+    run(_screen, _clock)
+    pygame.quit()
