@@ -2,6 +2,12 @@ import pygame
 from dataclasses import dataclass
 import math
 
+from pygame_physics import (
+    Player, Platform,
+    resolve_collisions_axis, apply_friction, center_distance,
+    GRAVITY, MOVE_SPEED, JUMP_SPEED, FRICTION_NORMAL
+)
+
 WIDTH, HEIGHT = 1280, 720
 FPS = 60
 
@@ -17,11 +23,6 @@ ASSET_SPIKE         = "assets/spike.png"
 ASSET_SPRING_DECOMP = "assets/Iron_Decompressed.png"
 ASSET_SPRING_COMP   = "assets/Iron_Compressed.png"
 
-GRAVITY         = 1800.0
-MOVE_SPEED      = 480.0
-JUMP_SPEED      = 780.0
-FRICTION_NORMAL = 12.0
-
 PICKUP_DISTANCE = 50
 DOOR_DISTANCE   = 70
 FLOOR_Y         = HEIGHT - 80
@@ -35,14 +36,6 @@ SPRING_H             = 66
 SPRING_RESTITUTION   = 1.9
 SPRING_COMPRESS_TIME = 0.10
 SPRING_EXPAND_TIME   = 0.18
-
-
-@dataclass
-class Platform:
-    rect: pygame.Rect
-    friction: float
-    restitution: float
-    kind: str
 
 
 @dataclass
@@ -68,42 +61,6 @@ class Hazard:
     y: float
     kind: str
     angle: float = 0.0
-
-
-@dataclass
-class Player:
-    rect: pygame.Rect
-    vx: float = 0.0
-    vy: float = 0.0
-    on_ground: bool = False
-    has_key: bool = False
-    facing_right: bool = True
-    coyote_timer: float = 0.0
-    jump_buffer: float = 0.0
-
-    COYOTE_TIME      = 0.10
-    JUMP_BUFFER_TIME = 0.10
-
-    def handle_input(self, keys):
-        self.vx = 0.0
-        if keys[pygame.K_a] or keys[pygame.K_LEFT]:
-            self.vx = -MOVE_SPEED
-            self.facing_right = False
-        if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
-            self.vx = MOVE_SPEED
-            self.facing_right = True
-
-    def request_jump(self):
-        self.jump_buffer = self.JUMP_BUFFER_TIME
-
-    def update_jump(self, dt):
-        self.jump_buffer  = max(0.0, self.jump_buffer  - dt)
-        self.coyote_timer = max(0.0, self.coyote_timer - dt)
-        if self.jump_buffer > 0 and (self.on_ground or self.coyote_timer > 0):
-            self.vy           = -JUMP_SPEED
-            self.on_ground    = False
-            self.coyote_timer = 0.0
-            self.jump_buffer  = 0.0
 
 
 @dataclass
@@ -148,7 +105,7 @@ def draw_tiled(surface, tile, area, cam_x=0, cam_y=0):
     surface.set_clip(prev_clip)
 
 
-def resolve_collisions_axis(player, platforms, springs, axis):
+def resolve_collisions_axis_spring(player, platforms, springs, axis):
     landed = None
     for p in platforms:
         if not player.rect.colliderect(p.rect):
@@ -180,17 +137,6 @@ def resolve_collisions_axis(player, platforms, springs, axis):
             player.vy = 0
 
     return landed
-
-
-def apply_friction(player, dt, friction):
-    if player.on_ground:
-        player.vx *= max(0.0, 1.0 - friction * dt)
-
-
-def center_distance(r1, r2):
-    dx = r1.centerx - r2.centerx
-    dy = r1.centery - r2.centery
-    return math.sqrt(dx * dx + dy * dy)
 
 
 def build_main_platforms():
@@ -417,7 +363,8 @@ def run(screen, clock):
             s.animating  = False
             s.anim_timer = 0.0
         state.update({
-            "scene": "main", "cam_x": 0.0, "cam_y": 0.0, "won": False, "win_timer": 0.0,
+            "scene": "main", "cam_x": 0.0, "cam_y": 0.0,
+            "won": False, "win_timer": 0.0,
             "anim_timer": 0.0, "anim_frame": 0,
             "fade_alpha": 0.0, "fade_state": None,
             "fade_target": None, "scene_next": None,
@@ -472,12 +419,12 @@ def run(screen, clock):
 
         player.vy += GRAVITY * dt
         player.rect.x += int(player.vx * dt)
-        resolve_collisions_axis(player, platforms, springs, "x")
+        resolve_collisions_axis_spring(player, platforms, springs, "x")
 
         was_on_ground    = player.on_ground
         player.on_ground = False
         player.rect.y   += int(player.vy * dt)
-        landed = resolve_collisions_axis(player, platforms, springs, "y")
+        landed = resolve_collisions_axis_spring(player, platforms, springs, "y")
 
         if was_on_ground and not player.on_ground:
             player.coyote_timer = player.COYOTE_TIME

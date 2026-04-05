@@ -2,6 +2,11 @@ import pygame
 from dataclasses import dataclass
 import math
 
+from pygame_physics import (
+    resolve_collisions_axis, apply_friction, center_distance,
+    GRAVITY, MOVE_SPEED, JUMP_SPEED, FRICTION_NORMAL
+)
+
 WIDTH, HEIGHT = 1280, 720
 FPS = 60
 
@@ -18,10 +23,6 @@ ASSET_SPIKE         = "assets/spike.png"
 ASSET_SPRING_DECOMP = "assets/Iron_Decompressed.png"
 ASSET_SPRING_COMP   = "assets/Iron_Compressed.png"
 
-GRAVITY         = 1800.0
-MOVE_SPEED      = 480.0
-JUMP_SPEED      = 780.0
-FRICTION_NORMAL = 12.0
 ACCEL_ICE       = 700.0
 DECEL_ICE       = 300.0
 
@@ -182,7 +183,7 @@ def draw_tiled(surface, tile, area, cam_x=0, cam_y=0):
     surface.set_clip(prev_clip)
 
 
-def resolve_collisions_axis(player, platforms, springs, axis):
+def resolve_collisions_axis_spring(player, platforms, springs, axis):
     landed = None
     for p in platforms:
         if not player.rect.colliderect(p.rect):
@@ -224,18 +225,6 @@ def get_ground_platform(player, platforms):
         if check.colliderect(p.rect):
             return p
     return None
-
-
-def apply_friction(player, dt, friction):
-    if player.on_ground:
-        player.vx *= max(0.0, 1.0 - friction * dt)
-
-
-def center_distance(r1, r2):
-    dx = r1.centerx - r2.centerx
-    dy = r1.centery - r2.centery
-    return math.sqrt(dx * dx + dy * dy)
-
 
 def build_main_platforms():
     F = FLOOR_Y
@@ -667,12 +656,12 @@ def run(screen, clock):
 
         player.vy += GRAVITY * dt
         player.rect.x += player.vx * dt
-        resolve_collisions_axis(player, platforms, springs, "x")
+        resolve_collisions_axis(player, platforms, "x")
 
         was_on_ground    = player.on_ground
         player.on_ground = False
         player.rect.y   += player.vy * dt
-        landed = resolve_collisions_axis(player, platforms, springs, "y")
+        landed = resolve_collisions_axis_spring(player, platforms, springs, "y")
 
         if landed:
             kind, obj = landed

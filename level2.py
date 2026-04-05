@@ -2,6 +2,12 @@ import pygame
 from dataclasses import dataclass
 import math
 
+from pygame_physics import (
+    Player, Platform,
+    resolve_collisions_axis, apply_friction, center_distance,
+    GRAVITY, MOVE_SPEED, JUMP_SPEED, FRICTION_NORMAL
+)
+
 WIDTH, HEIGHT = 1280, 720
 FPS = 60
 
@@ -15,11 +21,6 @@ ASSET_CRATE       = "assets/crate.png"
 ASSET_SPIKE       = "assets/spike.png"
 ASSET_SAW         = "assets/saw.png"
 
-GRAVITY         = 1800.0
-MOVE_SPEED      = 480.0
-JUMP_SPEED      = 780.0
-FRICTION_NORMAL = 12.0
-
 PICKUP_DISTANCE = 50
 DOOR_DISTANCE   = 70
 FLOOR_Y         = HEIGHT - 80
@@ -29,55 +30,11 @@ SAW_RADIUS = 22
 
 
 @dataclass
-class Platform:
-    rect: pygame.Rect
-    friction: float
-    restitution: float
-    kind: str
-
-
-@dataclass
 class Hazard:
     x: float
     y: float
     kind: str
     angle: float = 0.0
-
-
-@dataclass
-class Player:
-    rect: pygame.Rect
-    vx: float = 0.0
-    vy: float = 0.0
-    on_ground: bool = False
-    has_key: bool = False
-    facing_right: bool = True
-    coyote_timer: float = 0.0
-    jump_buffer: float = 0.0
-
-    COYOTE_TIME      = 0.10
-    JUMP_BUFFER_TIME = 0.10
-
-    def handle_input(self, keys):
-        self.vx = 0.0
-        if keys[pygame.K_a] or keys[pygame.K_LEFT]:
-            self.vx = -MOVE_SPEED
-            self.facing_right = False
-        if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
-            self.vx = MOVE_SPEED
-            self.facing_right = True
-
-    def request_jump(self):
-        self.jump_buffer = self.JUMP_BUFFER_TIME
-
-    def update_jump(self, dt):
-        self.jump_buffer  = max(0.0, self.jump_buffer  - dt)
-        self.coyote_timer = max(0.0, self.coyote_timer - dt)
-        if self.jump_buffer > 0 and (self.on_ground or self.coyote_timer > 0):
-            self.vy           = -JUMP_SPEED
-            self.on_ground    = False
-            self.coyote_timer = 0.0
-            self.jump_buffer  = 0.0
 
 
 @dataclass
@@ -120,39 +77,6 @@ def draw_tiled(surface, tile, area, cam_x=0):
         for xx in range(draw_rect.left, draw_rect.right, tw):
             surface.blit(tile, (xx, yy))
     surface.set_clip(prev_clip)
-
-
-def resolve_collisions_axis(player, platforms, axis):
-    landed = None
-    for p in platforms:
-        if not player.rect.colliderect(p.rect):
-            continue
-        if axis == "x":
-            if player.vx > 0:
-                player.rect.right = p.rect.left
-            elif player.vx < 0:
-                player.rect.left = p.rect.right
-            player.vx = 0
-        else:
-            if player.vy > 0:
-                player.rect.bottom = p.rect.top
-                player.on_ground = True
-                landed = p
-            elif player.vy < 0:
-                player.rect.top = p.rect.bottom
-            player.vy = 0
-    return landed
-
-
-def apply_friction(player, dt, friction):
-    if player.on_ground:
-        player.vx *= max(0.0, 1.0 - friction * dt)
-
-
-def center_distance(r1, r2):
-    dx = r1.centerx - r2.centerx
-    dy = r1.centery - r2.centery
-    return math.sqrt(dx * dx + dy * dy)
 
 
 def build_main_scene():

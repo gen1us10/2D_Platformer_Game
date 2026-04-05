@@ -2,6 +2,11 @@ import pygame
 from dataclasses import dataclass
 import math
 
+from pygame_physics import (
+    resolve_collisions_axis, apply_friction, center_distance,
+    GRAVITY, MOVE_SPEED, JUMP_SPEED, FRICTION_NORMAL
+)
+
 WIDTH, HEIGHT = 1280, 720
 FPS = 60
 
@@ -16,11 +21,7 @@ ASSET_KEY           = "assets/key.png"
 ASSET_DOOR_CLOSED   = "assets/door_closed.png"
 ASSET_DOOR_OPEN     = "assets/door_open.png"
 
-GRAVITY         = 1800.0
 GRAVITY_APPLE   = 300.0
-MOVE_SPEED      = 480.0
-JUMP_SPEED      = 780.0
-FRICTION_NORMAL = 12.0
 
 CARRY_SPEED_MULT = 0.55
 CARRY_JUMP_MULT  = 0.65
@@ -188,25 +189,6 @@ def draw_tiled(surface, tile, area, cam_x=0, cam_y=0):
     surface.set_clip(prev_clip)
 
 
-def resolve_collisions_axis(entity, platforms, axis):
-    for p in platforms:
-        if not entity.rect.colliderect(p.rect):
-            continue
-        if axis == "x":
-            if entity.vx > 0:
-                entity.rect.right = p.rect.left
-            elif entity.vx < 0:
-                entity.rect.left = p.rect.right
-            entity.vx = 0
-        else:
-            if entity.vy > 0:
-                entity.rect.bottom = p.rect.top
-                entity.on_ground = True
-            elif entity.vy < 0:
-                entity.rect.top = p.rect.bottom
-            entity.vy = 0
-
-
 def get_ground_platform(entity, platforms):
     check = pygame.Rect(entity.rect.x, entity.rect.bottom, entity.rect.width, 2)
     for p in platforms:
@@ -215,17 +197,6 @@ def get_ground_platform(entity, platforms):
         if check.colliderect(p.rect):
             return p
     return None
-
-
-def apply_friction(entity, dt, friction):
-    if entity.on_ground:
-        entity.vx *= max(0.0, 1.0 - friction * dt)
-
-
-def center_distance(r1, r2):
-    dx = r1.centerx - r2.centerx
-    dy = r1.centery - r2.centery
-    return math.sqrt(dx * dx + dy * dy)
 
 
 def build_platforms():
@@ -638,8 +609,7 @@ def run(screen, clock):
                 ap.collected  = True
                 player.apples = min(3, player.apples + 1)
 
-        if not player.has_key and not key.collected and \
-           player.rect.colliderect(key.rect):
+        if not player.has_key and not key.collected and player.rect.colliderect(key.rect):
             key.collected  = True
             player.has_key = True
 
