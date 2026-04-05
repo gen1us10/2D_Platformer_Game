@@ -9,7 +9,8 @@ The project also includes **pygame_physics** — a reusable Python package that 
 ## Running the game
 
 ### Option 1 — Executable (Windows)
-Download and run `dist/2D_Platformer.exe`. No Python or dependencies required.
+Download and run: https://github.com/gen1us10/2D_Platformer_Game/releases/tag/v1.0
+No Python or dependencies required.
 
 ### Option 2 — From source
 ```bash
